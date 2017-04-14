@@ -1,5 +1,7 @@
+
 from http import client
 import json
+from lxml import html
 
 
 # hh.ru требует обязательно указывать User-Agent
@@ -10,7 +12,7 @@ class ParseException(Exception):
     pass
 
 
-class Parser:
+class BaseParser:
 
     SUFFIX = ''
     PARAMS = {}
@@ -28,7 +30,7 @@ class Parser:
         q = (self.SUFFIX + '?' + '&'.join(pairs))
         return q
 
-    def start(self):
+    def run(self):
         self.conn.request("GET", self.query, headers=HEADERS)
         resp = self.conn.getresponse()
         if resp.status == 200:
@@ -39,44 +41,59 @@ class Parser:
             raise ParseException
 
 
-class VacanciesListParser(Parser):
+class VacanciesListParser(BaseParser):
 
     SUFFIX = '/vacancies/'
     PARAMS = {
         'text': 'python',
         'salary': 100000,
         'only_with_salary': True,
-        'per_page': 500,
+        # 'per_page': 500,
+        'per_page': 20,
     }
 
     def __init__(self):
         super().__init__()
-        self.items = []
+        self.id_list = []
 
-    def start(self):
-        self.items = []
+    def run(self):
+        self.id_list = []
         # hh.ru отдаёт не больше 500 вакансий за раз
         # поэтому загружаю их постранично
         page = 0
         stop = False
         while not stop:
             self.extra_params = {'page': page}
-            super().start()
-            items = self._data['items']
-            if items:
-                self.items += items
+            super().run()
+            ids = [itm['id'] for itm in self._data['items']]
+            if ids:
+                self.id_list += ids
                 page += 1
+                # TODO: убрать из рабочей версии
+                stop = True
             else:
                 stop = True
 
+    def __iter__(self):
+        return iter(self.id_list)
 
 
+class VacancyParser(BaseParser):
 
+    def __init__(self, id_):
+        super().__init__()
+        self.SUFFIX = '/vacancies/' + id_
+        self.key_skills = []
+        self.requirements = []
 
-
-
-
-vp = VacanciesListParser()
-vp.start()
-print(vp.status)
-print(len(vp.items))
+    def run(self):
+        super().run()
+        self.key_skills = [itm['name']
+                           for itm in self._data['key_skills']]
+        print(html.fromstring(
+                self._data['description']
+                ).xpath('p/strong/text()'))
+        self.requirements = html.fromstring(
+            self._data['description']
+        ).xpath('p/strong[text()="О нас:"]/../following-sibling::ul/li/text()')
+        #self.requirements = self._data['description']
