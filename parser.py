@@ -84,16 +84,17 @@ class VacancyParser(BaseParser):
         super().__init__()
         self.SUFFIX = '/vacancies/' + id_
         self.key_skills = []
-        self.requirements = []
+        self.ul_blocks = []
 
     def run(self):
         super().run()
         self.key_skills = [itm['name']
                            for itm in self._data['key_skills']]
-        print(html.fromstring(
-                self._data['description']
-                ).xpath('p/strong/text()'))
-        self.requirements = html.fromstring(
-            self._data['description']
-        ).xpath('p/strong[text()="О нас:"]/../following-sibling::ul/li/text()')
-        #self.requirements = self._data['description']
+        descr = self._data['description']
+        tags_ul = html.fromstring(descr).xpath('ul')
+        xpth = 'string(preceding-sibling::*[string(normalize-space())][1])'
+        self.ul_blocks = {
+            tag.xpath(xpth):
+            [line for line in tag.xpath('li/text()')]
+            for tag in tags_ul
+        }
